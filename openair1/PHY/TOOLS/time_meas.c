@@ -290,3 +290,57 @@ void end_meas(void) {
     msg->msgid = TIMESTAT_MSGID_END ;
     pushNotifiedFIFO(&measur_fifo, nfe);
 }
+
+
+
+static time_stats_overhead_t *meas_overhead_table;
+
+void init_meas_overhead(int available) {
+  if (meas_overhead_table == NULL) {
+    meas_overhead_table = (time_stats_overhead_t *) calloc(1, sizeof(time_stats_overhead_t));
+    AssertFatal(meas_overhead_table != NULL, "couldn't allocate measurements entires\n");
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long cur_time = tv.tv_sec * 1000000 + tv.tv_usec;
+
+    meas_overhead_table->in = 0;
+    meas_overhead_table->p_time = 0;
+    meas_overhead_table->cur_time = cur_time;
+    meas_overhead_table->count = 0;
+  }
+
+  meas_overhead_table->available = available;
+}
+
+void start_meas_overhead(void) {
+  if (meas_overhead_table == NULL) {
+    init_meas_overhead(0);
+  }
+
+  if (meas_overhead_table->available) {
+    meas_overhead_table->in = rdtsc_oai();
+  }
+}
+
+void stop_meas_overhead(void) {
+  if (meas_overhead_table->available) {
+    long long out = rdtsc_oai();
+    long long diff = (out - meas_overhead_table->in);
+    meas_overhead_table->p_time += diff;
+    meas_overhead_table->count += 1;
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long cur_time = tv.tv_sec * 1000000 + tv.tv_usec;
+
+    if (cur_time - meas_overhead_table->cur_time > 100000) {
+      printf(">>>>> %lld cpu cycle: %lld count: %d\n", cur_time, meas_overhead_table->p_time, meas_overhead_table->count);
+
+      meas_overhead_table->cur_time = cur_time;
+      meas_overhead_table->count = 0;
+      meas_overhead_table->in = 0;
+      meas_overhead_table->p_time = 0;
+    }
+  }
+}
