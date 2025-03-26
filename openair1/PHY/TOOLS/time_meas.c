@@ -344,3 +344,45 @@ void stop_meas_overhead(void) {
     }
   }
 }
+
+
+static dl_meas_time_t *dl_meas_time_table;
+
+void init_dl_meas_time(void) {
+  if (dl_meas_time_table == NULL) {
+    dl_meas_time_table = (dl_meas_time_t *) calloc(1, sizeof(dl_meas_time_t));
+    AssertFatal(dl_meas_time_table != NULL, "couldn't allocate measurements entries\n");
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    long long cur_time = tv.tv_sec * 1000000 + tv.tv_usec;
+
+    dl_meas_time_table->current_time = cur_time;
+    dl_meas_time_table->log_data_1 = 0;
+    dl_meas_time_table->log_data_2 = 0;
+  }
+}
+
+void update_dl_meas_time(int is_in, int data_size) {
+  if (dl_meas_time_table == NULL) {
+    init_dl_meas_time();
+  }
+
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  long long cur_time = tv.tv_sec * 1000000 + tv.tv_usec;
+
+  if (is_in) {
+    dl_meas_time_table->log_data_1 += data_size;
+  } else {
+    dl_meas_time_table->log_data_2 += data_size;
+  }
+
+  if (cur_time - dl_meas_time_table->current_time > 100000) { // 100ms
+    printf(">>>>> %lld log1: %d log2: %d\n", cur_time, dl_meas_time_table->log_data_1, dl_meas_time_table->log_data_2);
+
+    dl_meas_time_table->current_time = cur_time;
+    dl_meas_time_table->log_data_1 = 0;
+    dl_meas_time_table->log_data_2 = 0;
+  }
+}
