@@ -8,7 +8,7 @@
 #        define NUMBER_OF_NR_RU_MAX 2
 #        define NUMBER_OF_UCI_MAX 16
 #        define NUMBER_OF_ULSCH_MAX 8
-#        define NUMBER_OF_DLSCH_MAX 8 
+#        define NUMBER_OF_DLSCH_MAX 8
 #        define NUMBER_OF_SRS_MAX 16
 #        define NUMBER_OF_NR_ULSCH_MAX 8
 #        define NUMBER_OF_NR_DLSCH_MAX 8
@@ -28,17 +28,17 @@
 
 #        ifndef PHYSIM
 #            ifndef UE_EXPANSION
-#                    define NUMBER_OF_UE_MAX 4
+#                    define NUMBER_OF_UE_MAX 128
 #                    define NUMBER_OF_NR_UE_MAX 4
 #                    define NUMBER_OF_CONNECTED_eNB_MAX 1
 #                    define NUMBER_OF_CONNECTED_gNB_MAX 1
 #            else
-#                    define NUMBER_OF_UE_MAX 256
+#                    define NUMBER_OF_UE_MAX 128
 #                    define NUMBER_OF_CONNECTED_eNB_MAX 1
 #                    define NUMBER_OF_CONNECTED_gNB_MAX 1
 #            endif
 #        else
-#                    define NUMBER_OF_UE_MAX 4
+#                    define NUMBER_OF_UE_MAX 128
 #                    define NUMBER_OF_NR_UE_MAX 4
 #                    define NUMBER_OF_CONNECTED_eNB_MAX 1
 #                    define NUMBER_OF_CONNECTED_gNB_MAX 1
