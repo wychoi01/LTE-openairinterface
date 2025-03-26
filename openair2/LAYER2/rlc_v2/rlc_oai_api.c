@@ -99,7 +99,7 @@ void mac_rlc_data_ind     (
   } else {
     LOG_E(RLC, "%s:%d:%s: fatal: no RB found (rnti %d channel ID %d)\n",
           __FILE__, __LINE__, __FUNCTION__, rnti, channel_id);
-    exit(1);
+    // exit(1);
   }
 
   rlc_manager_unlock(rlc_ue_manager);
