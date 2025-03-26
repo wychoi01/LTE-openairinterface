@@ -1239,13 +1239,15 @@ int pnf_p7_subframe_ind(pnf_p7_t* pnf_p7, uint16_t phy_id, uint16_t sfn_sf)
 		{
 			if(tx_subframe_buffer->tx_req != 0)
 			{
-				// When a tx request comes into the subframe buffer and SFN is correct
-				for (int i = 0; i < tx_subframe_buffer->tx_req->tx_request_body.number_of_pdus; i++) {
-					update_dl_meas_time(0, tx_subframe_buffer->tx_req->tx_request_body.tx_pdu_list[i].pdu_length);
-				}
 
-				if(pnf_p7->_public.tx_req)
+				if(pnf_p7->_public.tx_req) {
+					// When a tx request comes into the subframe buffer and SFN is correct
+					for (int i = 0; i < tx_subframe_buffer->tx_req->tx_request_body.number_of_pdus; i++) {
+						update_dl_meas_time(0, tx_subframe_buffer->tx_req->tx_request_body.tx_pdu_list[i].pdu_length);
+					}
+
 					(pnf_p7->_public.tx_req)(&(pnf_p7->_public), tx_subframe_buffer->tx_req);
+				}
 
 				//deallocate_nfapi_tx_request(subframe_buffer->tx_req, pnf_p7);
 			}
