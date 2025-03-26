@@ -62,14 +62,14 @@ void nfapi_trace_dbg(nfapi_trace_level_t level, const char *format, ...)
 		return;
 	}
 
-	va_start(p_args, format);
-	if ((num_chars = (uint32_t)vsnprintf(&trace_buff[num_chars], MAX_MSG_LENGTH, format, p_args)))
-	{
-		if (level <= NFAPI_TRACE_WARN)
-		{
-			printf("%s", trace_buff);
-		}
-		printf("%s", trace_buff);
-	}
-	va_end(p_args);
+	// va_start(p_args, format);
+	// if ((num_chars = (uint32_t)vsnprintf(&trace_buff[num_chars], MAX_MSG_LENGTH, format, p_args)))
+	// {
+	// 	if (level <= NFAPI_TRACE_WARN)
+	// 	{
+	// 		printf("%s", trace_buff);
+	// 	}
+	// 	printf("%s", trace_buff);
+	// }
+	// va_end(p_args);
 }
