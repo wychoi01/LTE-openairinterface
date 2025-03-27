@@ -77,6 +77,28 @@ typedef struct {
 
 
 
+typedef struct {
+  OAI_CPUTIME_TYPE in;
+  OAI_CPUTIME_TYPE p_time;
+  long long cur_time;
+  int count;
+  int available;
+} time_stats_overhead_t;
+
+void init_meas_overhead(int available);
+void start_meas_overhead(void);
+void stop_meas_overhead(void);
+
+
+typedef struct {
+  long long current_time;
+  int log_data_1;
+  int log_data_2;
+} dl_meas_time_t;
+
+void init_dl_meas_time(void);
+void update_dl_meas_time(int is_in, int data_size);
+
 
 static inline void start_meas(time_stats_t *ts) __attribute__((always_inline));
 static inline void stop_meas(time_stats_t *ts) __attribute__((always_inline));

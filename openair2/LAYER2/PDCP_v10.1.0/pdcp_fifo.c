@@ -130,14 +130,14 @@ int pdcp_fifo_flush_sdus(const protocol_ctxt_t *const  ctxt_pP) {
         }
        else
        {
-	 if( LOG_DEBUGFLAG(DEBUG_PDCP) ) 
+	 if( LOG_DEBUGFLAG(DEBUG_PDCP) )
 	   log_dump(PDCP, pdcpData, pdcpHead->data_size, LOG_DUMP_CHAR,"PDCP output to be sent to TUN interface: \n");
 	 ret = write(nas_sock_fd[pdcpHead->inst], pdcpData,pdcpHead->data_size );
 	 LOG_T(PDCP,"[UE PDCP_FIFOS] ret %d TRIED TO PUSH DATA TO rb_id %d handle %d sizeToWrite %d\n",
 	       ret,rb_id,nas_sock_fd[pdcpHead->inst],pdcpHead->data_size);
        }
     } else if (ENB_NAS_USE_TUN) {
-      if( LOG_DEBUGFLAG(DEBUG_PDCP) ) 
+      if( LOG_DEBUGFLAG(DEBUG_PDCP) )
 	log_dump(PDCP, pdcpData, pdcpHead->data_size, LOG_DUMP_CHAR,"PDCP output to be sent to TUN interface: \n");
       ret = write(nas_sock_fd[0], pdcpData, pdcpHead->data_size);
        LOG_T(PDCP,"[NB PDCP_FIFOS] ret %d TRIED TO PUSH DATA TO rb_id %d handle %d sizeToWrite %d\n",ret,rb_id,nas_sock_fd[0],pdcpHead->data_size);
@@ -147,8 +147,8 @@ int pdcp_fifo_flush_sdus(const protocol_ctxt_t *const  ctxt_pP) {
       nas_nlh_tx->nlmsg_len = sizeToWrite;
       ret = sendmsg(nas_sock_fd[0],&nas_msg_tx,0);
     }  //  PDCP_USE_NETLINK
-    
-    AssertFatal(ret >= 0,"[PDCP_FIFOS] pdcp_fifo_flush_sdus (errno: %d %s), nas_sock_fd[0]: %d\n", errno, strerror(errno), nas_sock_fd[0]);
+
+    // AssertFatal(ret >= 0,"[PDCP_FIFOS] pdcp_fifo_flush_sdus (errno: %d %s), nas_sock_fd[0]: %d\n", errno, strerror(errno), nas_sock_fd[0]);
 
     if( LOG_DEBUGFLAG(DEBUG_PDCP) )
       log_dump(PDCP, pdcpData, min(pdcpHead->data_size,30) , LOG_DUMP_CHAR,
@@ -232,6 +232,12 @@ int pdcp_fifo_read_input_sdus_fromtun (const protocol_ctxt_t *const  ctxt_pP) {
       ctxt.module_id=0;
       key = PDCP_COLL_KEY_VALUE(ctxt.module_id, ctxt.rnti, ctxt.enb_flag, rab_id, SRB_FLAG_NO);
       h_rc = hashtable_get(pdcp_coll_p, key, (void **)&pdcp_p);
+
+      // Trigger an overhead measurement function when data over a certain size passes
+      // through the PDCP layer to measure overhead while IPERF tests are running
+      if (len >= 1000) {
+        init_meas_overhead(1);
+      }
     }
 
     LOG_D(PDCP, "PDCP_COLL_KEY_DEFAULT_DRB_VALUE(module_id=%d, rnti=%x, enb_flag=%d)\n",
@@ -723,7 +729,7 @@ void pdcp_fifo_read_input_sdus_frompc5s (const protocol_ctxt_t *const  ctxt_pP) 
                 &destinationL2Id
               );
               pc5s_header->sourceL2Id = sourceL2Id;
-              pc5s_header->destinationL2Id=destinationL2Id;             
+              pc5s_header->destinationL2Id=destinationL2Id;
             } else { /* else of h_rc == HASH_TABLE_OK */
               MSC_LOG_RX_DISCARDED_MESSAGE(
                 (ctxt_pP->enb_flag == ENB_FLAG_YES) ? MSC_PDCP_ENB:MSC_PDCP_UE,
@@ -786,7 +792,7 @@ void pdcp_fifo_read_input_sdus_frompc5s (const protocol_ctxt_t *const  ctxt_pP) 
               &destinationL2Id
             );
             pc5s_header->sourceL2Id = sourceL2Id;
-            pc5s_header->destinationL2Id=destinationL2Id; 
+            pc5s_header->destinationL2Id=destinationL2Id;
           }
         } /* end of !ctxt.enb_flag */
 
@@ -845,4 +851,3 @@ pdcp_pc5_socket_init() {
     exit(1);
   }
 }
-

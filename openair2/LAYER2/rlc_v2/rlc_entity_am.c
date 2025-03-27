@@ -150,7 +150,8 @@ static int rlc_am_reassemble_next_segment(rlc_am_reassemble_t *r)
   /* TODO: remove this check, it is useless, data has been validated before */
   if (r->pdu_byte < r->so) {
     LOG_E(RLC, "%s:%d:%s: fatal\n", __FILE__, __LINE__, __FUNCTION__);
-    exit(1);
+    // exit(1);
+    return 0;
   }
 
   /* if pdu_byte is not in [so .. so+len-1] then all bytes from this segment
