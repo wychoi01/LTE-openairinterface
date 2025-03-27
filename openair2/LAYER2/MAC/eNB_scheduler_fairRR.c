@@ -49,6 +49,8 @@
  #include "rlc.h"
  #include "common/utils/lte/prach_utils.h"
  #include "T.h"
+ #include "executables/softmodem-common.h"
+ #include "targets/RT/USER/lte-softmodem.h"
 
 
  #ifdef PHY_TX_THREAD
@@ -71,6 +73,67 @@
  int dlsch_hist_rb_raw[NUMBER_OF_UE_MAX]={0};
  int dlsch_hist_rxrb_raw[NUMBER_OF_UE_MAX]={0};
  int dlsch_hist_tput_raw[NUMBER_OF_UE_MAX]={0};
+
+int slice_rbgs_allocated[N_RBG_MAX] = {0};
+int slice_cqi[N_RBG_MAX] = {0};
+int slice_ue[N_RBG_MAX] = {0};
+
+
+
+// enterprise scheduling in RadioSaber
+// Return id of UE that has max ranking metric
+int enterprise_scheduling(
+  float coeff_ue[N_RBG_MAX][NUMBER_OF_UE_MAX],
+  int rbg_id
+) {
+  int max_ue_id = -1;
+  float max_metric = -1;
+
+  for (int UE_id = 0; UE_id < NUMBER_OF_UE_MAX; UE_id++) {
+    float metric = coeff_ue[rbg_id][UE_id];
+    if (metric > max_metric) {
+      max_metric = metric;
+      max_ue_id = UE_id;
+    }
+  }
+
+  return max_ue_id;
+}
+
+void assign_slice(
+  float coeff_ue[N_RBG_MAX][NUMBER_OF_UE_MAX],
+  int cqi_type
+) {
+  for (int rbg_id = 0; rbg_id < N_RBG_MAX; rbg_id++) {
+    int max_ue_id = enterprise_scheduling(coeff_ue, rbg_id);
+    if (max_ue_id > -1) {
+      slice_cqi[rbg_id] = cqi_type == 0 ? cqi_static_log[max_ue_id][rbg_id] : cqi_dynamic_log[cqi_timestamp][max_ue_id][rbg_id];
+      slice_ue[rbg_id] = max_ue_id;
+    } else {
+      slice_cqi[rbg_id] = -1;
+      slice_ue[rbg_id] = -1;
+    }
+  }
+}
+
+void assign_rbg(
+  float coeff_ue[N_RBG_MAX][NUMBER_OF_UE_MAX],
+  int rbg_id,
+  int cqi_type
+) {
+  int max_ue_id = enterprise_scheduling(coeff_ue, rbg_id);
+  if (max_ue_id > -1) {
+    slice_cqi[rbg_id] = cqi_type == 0 ? cqi_static_log[max_ue_id][rbg_id] : cqi_dynamic_log[cqi_timestamp][max_ue_id][rbg_id];
+    slice_ue[rbg_id] = max_ue_id;
+  } else {
+    slice_cqi[rbg_id] = -1;
+    slice_ue[rbg_id] = -1;
+  }
+}
+
+void calculate_RBG_Quota() {
+  // This logic is unnecessary because slice is always 1.
+}
 
 
  #if defined(PRE_SCD_THREAD)
@@ -1068,6 +1131,489 @@
    return;
  }
 
+ void dlsch_scheduler_pre_ue_select_fairRR_radiosaber(
+  module_id_t     module_idP,
+  frame_t         frameP,
+  sub_frame_t     subframeP,
+  int            *mbsfn_flag,
+  uint16_t        nb_rbs_required[MAX_NUM_CCs][MAX_MOBILES_PER_ENB],
+  DLSCH_UE_SELECT dlsch_ue_select[MAX_NUM_CCs],
+  uint8_t rballoc_sub[NFAPI_CC_MAX][N_RBG_MAX]) {
+  eNB_MAC_INST                   *eNB      = RC.mac[module_idP];
+  COMMON_channels_t              *cc       = eNB->common_channels;
+  UE_info_t                      *UE_info  = &eNB->UE_info;
+  UE_sched_ctrl_t                *ue_sched_ctl;
+  uint8_t                        CC_id;
+  int                            UE_id;
+  unsigned char                  round             = 0;
+  unsigned char                  harq_pid          = 0;
+  rnti_t                         rnti;
+  uint16_t                       i;
+  unsigned char                  aggregation;
+  int                            format_flag;
+  nfapi_dl_config_request_body_t *DL_req;
+  nfapi_dl_config_request_pdu_t  *dl_config_pdu;
+  uint16_t                       dlsch_ue_max_num[MAX_NUM_CCs] = {0};
+  uint16_t                       saved_dlsch_dci[MAX_NUM_CCs]  = {0};
+  uint8_t                        end_flag[MAX_NUM_CCs]         = {0};
+
+  int N_RBG[NFAPI_CC_MAX];
+  COMMON_channels_t *temp_cc;
+  int cqi_type = get_softmodem_params()->cqi_type;
+
+  for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++){
+    temp_cc = &RC.mac[module_idP]->common_channels[CC_id];
+    N_RBG[CC_id] = to_rbg(temp_cc->mib->message.dl_Bandwidth);
+  }
+
+  // Initialization
+  for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+    dlsch_ue_max_num[CC_id] = eNB->ue_multiple_max;
+    // save origin DL PDU number
+    DL_req          = &eNB->DL_req[CC_id].dl_config_request_body;
+    saved_dlsch_dci[CC_id] = DL_req->number_pdu;
+  }
+
+  // yhlee: logging  historical tput for every 1K tti
+  if (frameP % 100 == 0 && subframeP == 0){
+    LOG_E(MAC, "Hist tput [%d,%d]: %d, %d, %d, %d, %d, %d  \n",
+                frameP, subframeP, dlsch_hist_tput_raw[0], dlsch_hist_tput_raw[1]);
+                // dlsch_hist_tput_raw[2], dlsch_hist_tput_raw[3],
+                // dlsch_hist_tput_raw[4], dlsch_hist_tput_raw[5]);
+    LOG_E(MAC, "Hist tput mavg[%d,%d]: %f, %f, %f, %f, %f, %f  \n",
+                frameP, subframeP, dlsch_hist_tput[0], dlsch_hist_tput[1]);
+                // dlsch_hist_tput[2], dlsch_hist_tput[3],
+                // dlsch_hist_tput[4], dlsch_hist_tput[5]);
+    LOG_E(MAC, "Hist rb [%d,%d]: %d, %d, %d, %d, %d, %d  \n",
+                frameP, subframeP, dlsch_hist_rb_raw[0], dlsch_hist_rb_raw[1]);
+                // dlsch_hist_rb_raw[2], dlsch_hist_rb_raw[3],
+                // dlsch_hist_rb_raw[4], dlsch_hist_rb_raw[5]);
+    LOG_E(MAC, "Hist rx rb [%d,%d]: %d, %d, %d, %d, %d, %d  \n",
+                frameP, subframeP, dlsch_hist_rxrb_raw[0], dlsch_hist_rxrb_raw[1]);
+                // dlsch_hist_tput_raw[2], dlsch_hist_tput_raw[3],
+                // dlsch_hist_tput_raw[4], dlsch_hist_tput_raw[5]);
+    for (int i =0; i < 6; i++){
+      dlsch_hist_rb_raw[i] = 0;
+      dlsch_hist_rxrb_raw[i] = 0;
+    }
+  }
+
+  // Insert DLSCH(retransmission) UE into selected UE list
+  for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+    if (mbsfn_flag[CC_id]>0) {
+      continue;
+    }
+
+    // yhlee: Sub-band scheduling
+    int min_rb_unit = get_min_rb_unit(module_idP, CC_id);
+
+    DL_req          = &eNB->DL_req[CC_id].dl_config_request_body;
+
+    for (UE_id = 0; UE_id < NUMBER_OF_UE_MAX; UE_id++) {
+      if (UE_info->active[UE_id] == FALSE) {
+        continue;
+      }
+
+      // yhlee: Sub-band scheduling
+      // Calcualte historical tput
+      const float a = 0.005f; // corresponds to 200ms window
+      const float b = (float) UE_info->eNB_UE_stats[CC_id][UE_id].TBS;
+      if (b > 0) assert( ((1 - a) * dlsch_hist_tput[UE_id] + a * b) > 1e-3 );
+      else {
+        LOG_E(MAC, "==================b is Zero =======================");
+      }
+      dlsch_hist_tput[UE_id] = (1 - a) * dlsch_hist_tput[UE_id] + a * b;
+
+      // Historical tput for debugging
+      dlsch_hist_tput_raw[UE_id] += b;
+      // dlsch_hist_tput_raw[UE_id] = b;
+
+      rnti = UE_RNTI(module_idP, UE_id);
+
+      if (rnti == NOT_A_RNTI) {
+        continue;
+      }
+
+      if(mac_eNB_get_rrc_status(module_idP,rnti) < RRC_CONNECTED) {
+        continue;
+      }
+
+      ue_sched_ctl = &UE_info->UE_sched_ctrl[UE_id];
+      harq_pid = frame_subframe2_dl_harq_pid(cc[CC_id].tdd_Config,frameP,subframeP);
+      round = ue_sched_ctl->round[CC_id][harq_pid];
+
+      if (round != 8) {  // retransmission
+        if(UE_info->UE_template[CC_id][UE_id].nb_rb[harq_pid] == 0) {
+          continue;
+        }
+
+        switch (get_tmode(module_idP, CC_id, UE_id)) {
+          case 1:
+          case 2:
+          case 7:
+            aggregation = get_aggregation(get_bw_index(module_idP, CC_id),
+                                           ue_sched_ctl->dl_cqi[CC_id],
+                                          format1);
+            break;
+
+          case 3:
+            aggregation = get_aggregation(get_bw_index(module_idP,CC_id),
+                                          ue_sched_ctl->dl_cqi[CC_id],
+                                          format2A);
+            break;
+
+          default:
+            LOG_W(MAC,"Unsupported transmission mode %d\n", get_tmode(module_idP,CC_id,UE_id));
+            aggregation = 2;
+            break;
+        }
+
+        format_flag = 1;
+
+        if (!CCE_allocation_infeasible(module_idP,
+                                       CC_id,
+                                       format_flag,
+                                       subframeP,
+                                       aggregation,
+                                       rnti)) {
+          dl_config_pdu = &DL_req->dl_config_pdu_list[DL_req->number_pdu];
+          dl_config_pdu->pdu_type                                     = NFAPI_DL_CONFIG_DCI_DL_PDU_TYPE;
+          dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.rnti              = rnti;
+          dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.rnti_type         = (format_flag == 0)?2:1;
+          dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.aggregation_level = aggregation;
+          DL_req->number_pdu++;
+          nb_rbs_required[CC_id][UE_id] = UE_info->UE_template[CC_id][UE_id].nb_rb[harq_pid];
+          // Insert DLSCH(retransmission) UE into selected UE list
+          dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].UE_id = UE_id;
+          dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].ue_priority = SCH_DL_RETRANS;
+          dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].rnti = rnti;
+          dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].nb_rb = nb_rbs_required[CC_id][UE_id];
+          dlsch_ue_select[CC_id].ue_num++;
+
+          // yhlee: Sub-band scheduling
+          // Assign rbgs to the UE, with the given
+          int rbg_idx = 0;
+          int assigned_rbs = 0;
+          while (rbg_idx < N_RBG_MAX && assigned_rbs < nb_rbs_required[CC_id][UE_id]){
+            if (rballoc_sub[CC_id][rbg_idx] != 0){
+              rbg_idx++;
+              continue;
+            }
+            if (dlsch_rb_allocated_ues[CC_id][rbg_idx] < 0){
+              dlsch_rb_allocated_ues[CC_id][rbg_idx] = UE_id;
+              assigned_rbs += min_rb_unit;
+              // yhlee hist rb logging
+              // dlsch_hist_rb_raw[UE_id] += min_rb_unit;
+              dlsch_hist_rxrb_raw[UE_id] += min_rb_unit;
+            }
+            rbg_idx++;
+          }
+
+
+          if (dlsch_ue_select[CC_id].ue_num == dlsch_ue_max_num[CC_id]) {
+            end_flag[CC_id] = 1;
+            break;
+          }
+        } else {
+          if (cc[CC_id].tdd_Config != NULL) { //TDD
+            set_ue_dai (subframeP,
+                        UE_id,
+                        CC_id,
+                        cc[CC_id].tdd_Config->subframeAssignment,
+                        UE_info);
+            // update UL DAI after DLSCH scheduling
+            set_ul_DAI(module_idP,UE_id,CC_id,frameP,subframeP);
+          }
+
+          add_ue_dlsch_info(module_idP,
+                            CC_id,
+                            UE_id,
+                            subframeP,
+                            S_DL_NONE,
+                            rnti);
+          end_flag[CC_id] = 1;
+          break;
+        }
+      }
+    }
+  }
+
+  if(cc_id_end(end_flag) == 1) {
+    for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+      DL_req          = &eNB->DL_req[CC_id].dl_config_request_body;
+      DL_req->number_pdu = saved_dlsch_dci[CC_id];
+    }
+
+    return;
+  }
+
+  // Insert DLSCH(first transmission) UE into selected UE list (UE_id > last_dlsch_ue_id[CC_id])
+  for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+    if (mbsfn_flag[CC_id]>0) {
+      continue;
+    }
+
+    // yhlee Sub-band scheduling
+    int min_rb_unit = get_min_rb_unit(module_idP, CC_id);
+
+    DL_req          = &eNB->DL_req[CC_id].dl_config_request_body;
+
+    // yhlee Sub-band scheduling
+    // Calculate the coefficient for all
+    float coeff_ue[N_RBG_MAX][NUMBER_OF_UE_MAX] = {0};
+    int tti_UE_assigned_rbs[NUMBER_OF_UE_MAX]={0};
+    int tti_UE_cand_num = 0;
+    int tti_UE_cand[NUMBER_OF_UE_MAX];
+    for (int j = 0; j < NUMBER_OF_UE_MAX; j++)
+      tti_UE_cand[j] = -1;
+
+    // Create tti_UE_cand & coeff_ue
+    for (UE_id = 0; UE_id < NUMBER_OF_UE_MAX; UE_id++) {
+      if(end_flag[CC_id] == 1) {
+        break;
+      }
+
+      if (UE_info->active[UE_id] == FALSE) {
+        continue;
+      }
+
+      rnti = UE_RNTI(module_idP,UE_id);
+
+      if (rnti == NOT_A_RNTI)
+        continue;
+
+      if(mac_eNB_get_rrc_status(module_idP,rnti) < RRC_CONNECTED) {
+        continue;
+      }
+
+      // check it is already assigned at the RETX process
+      for(i = 0; i < dlsch_ue_select[CC_id].ue_num; i++) {
+        if(dlsch_ue_select[CC_id].list[i].UE_id == UE_id) {
+          break;
+        }
+      }
+      if(i < dlsch_ue_select[CC_id].ue_num)
+        continue;
+
+      tti_UE_cand[tti_UE_cand_num] = UE_id;
+      tti_UE_cand_num++;
+
+      for (int rbg_id=0; rbg_id < N_RBG[CC_id]; rbg_id++){
+        // const int mcs = cqi_to_mcs[UE_info->UE_sched_ctrl[UE_id].aperiodic_subband_cqi0[CC_id][rbg_id]];
+        // const uint32_t tbs = get_TBS_DL(mcs, min_rb_unit);
+        // coeff_ue[rbg_id][UE_id] = (float) tbs / cmax(dlsch_hist_tput[UE_id], 1);
+
+        // coeff_ue[rbg_id][UE_id] = (float) 1 / cmax(dlsch_hist_rb_raw[UE_id], 1);
+        // coeff_ue[rbg_id][UE_id] = (float) tbs / cmax(dlsch_hist_rb_raw[UE_id], 1);
+
+
+        // int cqi_type = get_softmodem_params()->cqi_type;
+        // const int mcs = cqi_type == 0 ? cqi_to_mcs[cqi_static_log[UE_id][rbg_id]] : cqi_to_mcs[cqi_dynamic_log[cqi_timestamp][UE_id][rbg_id]];
+        // const uint32_t tbs = get_TBS_DL(mcs, min_rb_unit);
+        // coeff_ue[rbg_id][UE_id] = (float) tbs / cmax(dlsch_hist_tput[UE_id], 1);
+
+        // wooyoung Radiosaber calculate Ranking Metric
+        int mcs = 0;
+        if (cqi_type == 0) {
+          mcs = cqi_to_mcs[cqi_static_log[UE_id][rbg_id]];
+        } else {
+          mcs = cqi_to_mcs[cqi_dynamic_log[cqi_timestamp][UE_id][rbg_id]];
+        }
+        const uint32_t tbs = get_TBS_DL(mcs, min_rb_unit);
+        coeff_ue[rbg_id][UE_id] = (float) tbs / cmax(dlsch_hist_tput[UE_id], 1);
+      }
+    }
+
+    // wooyoung Radiosaber Scheduling
+    assign_slice(coeff_ue, cqi_type);
+    int is_rbg_allocated[N_RBG_MAX] = {0};
+
+    // wooyoung Radiosaber scheduling
+    // Iteration for each RB: Coeff base UE select & schedule for DL DATA
+    for (int rbg_id = 0; rbg_id <  N_RBG[CC_id]; rbg_id++){
+      // skip rbs allocated for other channels
+      if (rballoc_sub[CC_id][rbg_id] != 0){
+        continue;
+      }
+      // skip allocated rb
+      if (dlsch_rb_allocated_ues[CC_id][rbg_id] >= 0){
+        continue;
+      }
+
+      // select the best UE
+      // float max_coeff = 0;
+      // int selected_UE_id = -1;
+
+      // for (int tti_ue_id = 0; tti_ue_id < tti_UE_cand_num; tti_ue_id++){
+      //   UE_id = tti_UE_cand[tti_ue_id];
+      //   // LOG_E(MAC, "Debug: UE %d rbg %d coeff %f\n", UE_id, rbg_id, coeff_ue[rbg_id][UE_id]);
+      //   if (UE_id < 0)
+      //     continue;
+      //   if (max_coeff <= coeff_ue[rbg_id][UE_id]){
+      //     max_coeff = coeff_ue[rbg_id][UE_id];
+      //     selected_UE_id = UE_id;
+      //   }
+      // }
+
+      // wooyoung Radiosaber Scheduling
+      int selected_UE_id = -1;
+      int max_cqi = -1;
+      int max_rbg_id = -1;
+
+      for (int k = 0; k < N_RBG[CC_id]; k++) {
+        if (is_rbg_allocated[k] == 1) {
+          continue;
+        }
+
+        if (slice_cqi[k] > max_cqi) {
+          max_cqi = slice_cqi[k];
+          max_rbg_id = k;
+        }
+      }
+
+      if (max_rbg_id == -1) {
+        continue;
+      }
+
+      selected_UE_id = slice_ue[max_rbg_id];
+
+      // Early break if there is no UE to schedule
+      if (selected_UE_id == -1){
+        LOG_E(MAC, "Debug: No selected UE\n");
+        break;
+      }
+
+      is_rbg_allocated[max_rbg_id] = 1;
+      assign_rbg(coeff_ue, max_rbg_id, cqi_type);
+
+      // recomputation
+      for (int k = 0; k < N_RBG[CC_id]; k++) {
+        int max_ue_id = enterprise_scheduling(coeff_ue, k);
+        if (max_ue_id > -1) {
+          slice_cqi[k] = cqi_type == 0 ? cqi_static_log[max_ue_id][k] : cqi_dynamic_log[cqi_timestamp][max_ue_id][k];
+          slice_ue[k] = max_ue_id;
+        } else {
+          slice_cqi[k] = -1;
+          slice_ue[k] = -1;
+        }
+      }
+
+      ue_sched_ctl = &UE_info->UE_sched_ctrl[selected_UE_id];
+      harq_pid = frame_subframe2_dl_harq_pid(cc[CC_id].tdd_Config,frameP,subframeP);
+      round = ue_sched_ctl->round[CC_id][harq_pid];
+      rnti = UE_RNTI(module_idP, selected_UE_id);
+
+      if (round == 8) {
+        if (nb_rbs_required[CC_id][selected_UE_id] == 0) {
+          continue;
+        }
+
+        switch (get_tmode(module_idP, CC_id, selected_UE_id)) {
+          case 1:
+          case 2:
+          case 7:
+            aggregation = get_aggregation(get_bw_index(module_idP, CC_id),
+                                          ue_sched_ctl->dl_cqi[CC_id],
+                                          format1);
+            break;
+
+          case 3:
+            aggregation = get_aggregation(get_bw_index(module_idP,CC_id),
+                                          ue_sched_ctl->dl_cqi[CC_id],
+                                          format2A);
+            break;
+
+          default:
+            LOG_W(MAC,"Unsupported transmission mode %d\n", get_tmode(module_idP,CC_id,selected_UE_id));
+            aggregation = 2;
+            break;
+        }
+
+        format_flag = 1;
+
+        if (!CCE_allocation_infeasible(module_idP,
+                                       CC_id,
+                                       format_flag,
+                                       subframeP,
+                                       aggregation,
+                                       rnti)) {
+
+          if (tti_UE_assigned_rbs[selected_UE_id] == 0){
+            dl_config_pdu = &DL_req->dl_config_pdu_list[DL_req->number_pdu];
+            dl_config_pdu->pdu_type                                     = NFAPI_DL_CONFIG_DCI_DL_PDU_TYPE;
+            dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.rnti              = rnti;
+            dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.rnti_type         = (format_flag == 0)?2:1;
+            dl_config_pdu->dci_dl_pdu.dci_dl_pdu_rel8.aggregation_level = aggregation;
+            DL_req->number_pdu++;
+            // Insert DLSCH(first transmission) UE into selected selected UE list
+            dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].ue_priority = SCH_DL_FIRST;
+            dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].nb_rb = nb_rbs_required[CC_id][selected_UE_id];
+            dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].UE_id = selected_UE_id;
+            dlsch_ue_select[CC_id].list[dlsch_ue_select[CC_id].ue_num].rnti = rnti;
+            dlsch_ue_select[CC_id].ue_num++;
+          } else {
+            for(int j = 0; j<dlsch_ue_select[CC_id].ue_num; j++) {
+              if(dlsch_ue_select[CC_id].list[j].UE_id == selected_UE_id) {
+                dlsch_ue_select[CC_id].list[j].nb_rb = tti_UE_assigned_rbs[selected_UE_id] + min_rb_unit;
+              }
+            }
+          }
+
+          // yhlee: Sub-band scheduling
+          // Update dlsch_rb_allocated_ues, tti_UE_assigned_rbs, tti_UE_cand
+          assert(dlsch_rb_allocated_ues[CC_id][rbg_id] < 0);
+          dlsch_rb_allocated_ues[CC_id][rbg_id] = selected_UE_id;
+
+          // yhlee hist rb logging
+          dlsch_hist_rb_raw[selected_UE_id] += min_rb_unit;
+
+          tti_UE_assigned_rbs[selected_UE_id] += min_rb_unit;
+          if (nb_rbs_required[CC_id][selected_UE_id] < tti_UE_assigned_rbs[selected_UE_id]){
+            for (int j = 0; j < tti_UE_cand_num; j++){
+              if (tti_UE_cand[j] == selected_UE_id)
+                tti_UE_cand[j] = -1;
+            }
+          }
+
+          // remove all the not-assigned candidates, since the limit of dlsch_ue_max_num
+          if (dlsch_ue_select[CC_id].ue_num == dlsch_ue_max_num[CC_id]) {
+            for (int j = 0; j < tti_UE_cand_num; j++){
+              if (tti_UE_assigned_rbs[tti_UE_cand[j]] <= 0)
+                tti_UE_cand[j] = -1;
+            }
+          }
+        } else {
+          if (cc[CC_id].tdd_Config != NULL) { //TDD
+            set_ue_dai (subframeP,
+                        selected_UE_id,
+                        CC_id,
+                        cc[CC_id].tdd_Config->subframeAssignment,
+                        UE_info);
+            // update UL DAI after DLSCH scheduling
+            set_ul_DAI(module_idP,selected_UE_id,CC_id,frameP,subframeP);
+          }
+
+          add_ue_dlsch_info(module_idP,
+                            CC_id,
+                            selected_UE_id,
+                            subframeP,
+                            S_DL_NONE,
+                            rnti);
+          end_flag[CC_id] = 1;
+          break;
+        }
+      }
+    }
+  }
+
+  for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
+    DL_req          = &eNB->DL_req[CC_id].dl_config_request_body;
+    DL_req->number_pdu = saved_dlsch_dci[CC_id];
+  }
+
+  return;
+}
+
  void dlsch_scheduler_pre_processor_reset_fairRR(
      module_id_t module_idP,
      frame_t frameP,
@@ -1481,7 +2027,8 @@
    memcpy(nb_rbs_required, pre_nb_rbs_required[dlsch_ue_select_tbl_in_use], sizeof(uint16_t)*MAX_NUM_CCs*MAX_MOBILES_PER_ENB);
  #endif
    // dlsch_scheduler_pre_ue_select_fairRR(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select);
-   dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
+  //  dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
+   dlsch_scheduler_pre_ue_select_fairRR_radiosaber(Mod_id, frameP, subframeP, mbsfn_flag, nb_rbs_required, dlsch_ue_select, rballoc_sub);
 
    for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
      average_rbs_per_user[CC_id] = 0;
