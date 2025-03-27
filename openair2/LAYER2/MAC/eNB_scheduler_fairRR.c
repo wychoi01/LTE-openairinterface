@@ -2031,8 +2031,8 @@ void calculate_RBG_Quota() {
    memcpy(nb_rbs_required, pre_nb_rbs_required[dlsch_ue_select_tbl_in_use], sizeof(uint16_t)*MAX_NUM_CCs*MAX_MOBILES_PER_ENB);
  #endif
    // dlsch_scheduler_pre_ue_select_fairRR(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select);
-  //  dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
-   dlsch_scheduler_pre_ue_select_fairRR_radiosaber(Mod_id, frameP, subframeP, mbsfn_flag, nb_rbs_required, dlsch_ue_select, rballoc_sub);
+   dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
+  //  dlsch_scheduler_pre_ue_select_fairRR_radiosaber(Mod_id, frameP, subframeP, mbsfn_flag, nb_rbs_required, dlsch_ue_select, rballoc_sub);
 
    for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
      average_rbs_per_user[CC_id] = 0;
