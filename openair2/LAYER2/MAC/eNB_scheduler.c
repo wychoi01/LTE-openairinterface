@@ -1045,7 +1045,9 @@ eNB_dlsch_ulsch_scheduler(module_id_t module_idP,
 
     /* This schedules DLSCH in subframeP */
     if (schedule_ue_spec_p != NULL) {
+      start_meas_overhead();
       schedule_ue_spec_p(module_idP, frameP, subframeP, mbsfn_status);
+      stop_meas_overhead();
     } else {
       LOG_E(MAC," %s %d: schedule_ue_spec_p is NULL, function not called\n",
             __FILE__,
