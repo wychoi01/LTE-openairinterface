@@ -131,6 +131,10 @@
 //    {"threadIQ",                NULL,      0,     iptr:&(threads.iq),                 defintval:1,     TYPE_INT,       0},
 
 #define DEFAULT_DLF 2680000000
+#define CQI_TIME_FRAMES 9000
+
+int cqi_static_log[NUMBER_OF_UE_MAX][N_RBG_MAX];
+int cqi_dynamic_log[CQI_TIME_FRAMES][NUMBER_OF_UE_MAX][N_RBG_MAX];
 
 
 uint64_t get_pdcp_optmask(void);

@@ -21,11 +21,11 @@
 
 /*! \file lte-softmodem-common.h
  * \brief Top-level threads for eNodeB
- * \author 
+ * \author
  * \date 2012
  * \version 0.1
  * \company Eurecom
- * \email: 
+ * \email:
  * \note
  * \warning
  */
@@ -123,6 +123,9 @@ extern "C"
 #define PRB_INTERPOLATION   softmodem_params.prb_interpolation
 #define NFAPI               softmodem_params.nfapi
 #define NON_STOP            softmodem_params.non_stop
+#define SLEEP_TIME          softmodem_params.sleep_time
+#define CQI_THRESHOLD       softmodem_params.cqi_threshold
+#define CQI_TYPE            softmodem_params.cqi_type
 
 #define DEFAULT_RFCONFIG_FILE    "/usr/local/etc/syriq/ue.band7.tm1.PRB100.NR40.dat";
 
@@ -155,13 +158,16 @@ extern int usrp_tx_thread;
     {"nokrnmod",             CONFIG_HLP_NOKRNMOD,     PARAMFLAG_BOOL, uptr:&nokrnmod,                     defintval:0,           TYPE_INT,    0},                     \
     {"nbiot-disable",        CONFIG_HLP_DISABLNBIOT,  PARAMFLAG_BOOL, uptr:&nonbiot,                      defuintval:0,          TYPE_INT,    0},                     \
     {"use-256qam-table",     CONFIG_HLP_256QAM,       PARAMFLAG_BOOL, iptr:&USE_256QAM_TABLE,             defintval:0,           TYPE_INT,    0},                     \
-    {"do-prb-interpolation",  CONFIG_HLP_PRBINTER,     PARAMFLAG_BOOL, iptr:&PRB_INTERPOLATION,            defintval:0,           TYPE_INT,    0},                     \
+    {"do-prb-interpolation",  CONFIG_HLP_PRBINTER,     PARAMFLAG_BOOL, iptr:&PRB_INTERPOLATION,           defintval:0,           TYPE_INT,    0},                     \
     {"usrp-tx-thread-config", CONFIG_HLP_USRP_THREAD, 0,              iptr:&usrp_tx_thread,               defstrval:0,           TYPE_INT,    0},        \
-    {"nfapi",                CONFIG_HLP_NFAPI,        0,              u8ptr:&nfapi_mode,                       defintval:0,           TYPE_UINT8,  0},                     \
-    {"non-stop",            CONFIG_HLP_NONSTOP,      PARAMFLAG_BOOL, iptr:&NON_STOP,                       defintval:0,           TYPE_INT,  0},                     \
+    {"nfapi",                CONFIG_HLP_NFAPI,        0,              u8ptr:&nfapi_mode,                  defintval:0,           TYPE_UINT8,  0},                     \
+    {"non-stop",            CONFIG_HLP_NONSTOP,      PARAMFLAG_BOOL, iptr:&NON_STOP,                      defintval:0,           TYPE_INT,    0},                     \
+    {"sleep-time" ,          NULL,                   0,              iptr:&SLEEP_TIME,                 defintval:0,           TYPE_INT,    0},                     \
+    {"cqi-threshold" ,       NULL,                   0,              iptr:&CQI_THRESHOLD,                 defintval:0,           TYPE_INT,    0},                     \
+    {"cqi-type" ,            NULL,                   0,              iptr:&CQI_TYPE,                      defintval:0,           TYPE_INT,    0},                     \
   }
 
-  
+
 #define CONFIG_HLP_FLOG          "Enable online log \n"
 #define CONFIG_HLP_LOGL          "Set the global log level, valid options: (4:trace, 3:debug, 2:info, 1:warn, (0:error))\n"
 #define CONFIG_HLP_LOGV          "Set the global log verbosity \n"
@@ -188,6 +194,9 @@ extern int usrp_tx_thread;
 #define CMDLINE_LOGPARAMS_CHECK_DESC { \
     { .s5= {NULL} } ,                       \
     { .s2= {config_check_intrange, {0,4}}}, \
+    { .s5= {NULL} } ,                       \
+    { .s5= {NULL} } ,                       \
+    { .s5= {NULL} } ,                       \
     { .s5= {NULL} } ,                       \
     { .s5= {NULL} } ,                       \
     { .s5= {NULL} } ,                       \
@@ -221,7 +230,7 @@ extern int usrp_tx_thread;
 #define IS_SOFTMODEM_SIML1           ( get_softmodem_optmask() & SOFTMODEM_SIML1_BIT)
 #define IS_SOFTMODEM_DOSCOPE         ( get_softmodem_optmask() & SOFTMODEM_DOSCOPE_BIT)
 #define IS_SOFTMODEM_IQPLAYER        ( get_softmodem_optmask() & SOFTMODEM_RECPLAY_BIT)
-#define IS_SOFTMODEM_TELNETCLT_BIT   ( get_softmodem_optmask() & SOFTMODEM_TELNETCLT_BIT)    
+#define IS_SOFTMODEM_TELNETCLT_BIT   ( get_softmodem_optmask() & SOFTMODEM_TELNETCLT_BIT)
 #define IS_SOFTMODEM_ENB_BIT         ( get_softmodem_optmask() & SOFTMODEM_ENB_BIT)
 #define IS_SOFTMODEM_GNB_BIT         ( get_softmodem_optmask() & SOFTMODEM_GNB_BIT)
 #define IS_SOFTMODEM_4GUE_BIT        ( get_softmodem_optmask() & SOFTMODEM_4GUE_BIT)
@@ -252,6 +261,9 @@ typedef struct {
   int            prb_interpolation;
   uint8_t        nfapi;
   int            non_stop;
+  int            sleep_time;
+  int            cqi_threshold;
+  int            cqi_type;
 } softmodem_params_t;
 
 extern uint64_t get_softmodem_optmask(void);
