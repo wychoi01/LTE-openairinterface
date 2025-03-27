@@ -28,57 +28,61 @@
  * @ingroup _mac
  */
 
- #define _GNU_SOURCE
- #include <stdlib.h>
+#define _GNU_SOURCE
+#include <stdlib.h>
+#include <stdio.h>
+#include <immintrin.h>
+#include <stdint.h>
+#include <string.h>
 
- #include "assertions.h"
+#include "assertions.h"
 
- #include "PHY/phy_extern.h"
- #include "PHY/LTE_TRANSPORT/transport_common_proto.h"
- #include "SIMULATION/TOOLS/sim.h"
- #include "LAYER2/MAC/mac_proto.h"
- #include "LAYER2/MAC/mac_extern.h"
- #include "LAYER2/MAC/eNB_scheduler_fairRR.h"
- #include "common/utils/LOG/log.h"
- #include "nfapi/oai_integration/vendor_ext.h"
- #include "common/utils/LOG/vcd_signal_dumper.h"
- #include "UTIL/OPT/opt.h"
- #include "OCG.h"
- #include "OCG_extern.h"
- #include "RRC/L2_INTERFACE/openair_rrc_L2_interface.h"
- #include "rlc.h"
- #include "common/utils/lte/prach_utils.h"
- #include "T.h"
- #include "executables/softmodem-common.h"
- #include "targets/RT/USER/lte-softmodem.h"
+#include "PHY/phy_extern.h"
+#include "PHY/LTE_TRANSPORT/transport_common_proto.h"
+#include "SIMULATION/TOOLS/sim.h"
+#include "LAYER2/MAC/mac_proto.h"
+#include "LAYER2/MAC/mac_extern.h"
+#include "LAYER2/MAC/eNB_scheduler_fairRR.h"
+#include "common/utils/LOG/log.h"
+#include "nfapi/oai_integration/vendor_ext.h"
+#include "common/utils/LOG/vcd_signal_dumper.h"
+#include "UTIL/OPT/opt.h"
+#include "OCG.h"
+#include "OCG_extern.h"
+#include "RRC/L2_INTERFACE/openair_rrc_L2_interface.h"
+#include "rlc.h"
+#include "common/utils/lte/prach_utils.h"
+#include "T.h"
+#include "executables/softmodem-common.h"
+#include "targets/RT/USER/lte-softmodem.h"
 
 
- #ifdef PHY_TX_THREAD
-   extern volatile int16_t phy_tx_txdataF_end;
-   extern int oai_exit;
- #endif
- extern uint16_t sfnsf_add_subframe(uint16_t frameP, uint16_t subframeP, int offset);
- extern void add_subframe(uint16_t *frameP, uint16_t *subframeP, int offset);
+#ifdef PHY_TX_THREAD
+  extern volatile int16_t phy_tx_txdataF_end;
+  extern int oai_exit;
+#endif
+extern uint16_t sfnsf_add_subframe(uint16_t frameP, uint16_t subframeP, int offset);
+extern void add_subframe(uint16_t *frameP, uint16_t *subframeP, int offset);
 
- /* internal vars */
- DLSCH_UE_SELECT dlsch_ue_select[MAX_NUM_CCs];
- int last_dlsch_ue_id[MAX_NUM_CCs] = {-1};
- int last_dlsch_ue_id_volte[MAX_NUM_CCs] = {-1};
- int last_ulsch_ue_id[MAX_NUM_CCs] = {-1};
- int last_ulsch_ue_id_volte[MAX_NUM_CCs] = {-1};
+/* internal vars */
+DLSCH_UE_SELECT dlsch_ue_select[MAX_NUM_CCs];
+int last_dlsch_ue_id[MAX_NUM_CCs] = {-1};
+int last_dlsch_ue_id_volte[MAX_NUM_CCs] = {-1};
+int last_ulsch_ue_id[MAX_NUM_CCs] = {-1};
+int last_ulsch_ue_id_volte[MAX_NUM_CCs] = {-1};
 
- // yhlee: Sub-band scheduling
- int dlsch_rb_allocated_ues[MAX_NUM_CCs][N_RBG_MAX];
- float dlsch_hist_tput[NUMBER_OF_UE_MAX]={0};
- int dlsch_hist_rb_raw[NUMBER_OF_UE_MAX]={0};
- int dlsch_hist_rxrb_raw[NUMBER_OF_UE_MAX]={0};
- int dlsch_hist_tput_raw[NUMBER_OF_UE_MAX]={0};
+// yhlee: Sub-band scheduling
+int dlsch_rb_allocated_ues[MAX_NUM_CCs][N_RBG_MAX];
+float dlsch_hist_tput[NUMBER_OF_UE_MAX]={0};
+int dlsch_hist_rb_raw[NUMBER_OF_UE_MAX]={0};
+int dlsch_hist_rxrb_raw[NUMBER_OF_UE_MAX]={0};
+int dlsch_hist_tput_raw[NUMBER_OF_UE_MAX]={0};
 
 int slice_rbgs_allocated[N_RBG_MAX] = {0};
 int slice_cqi[N_RBG_MAX] = {0};
 int slice_ue[N_RBG_MAX] = {0};
 
-
+int cqi_timestamp = 0;
 
 // enterprise scheduling in RadioSaber
 // Return id of UE that has max ranking metric
