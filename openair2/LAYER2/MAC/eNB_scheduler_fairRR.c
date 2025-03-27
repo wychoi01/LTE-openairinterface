@@ -2111,8 +2111,8 @@
  #endif
    // start_meas_overhead();
    // dlsch_scheduler_pre_ue_select_fairRR(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select);
-   dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
-   // dlsch_scheduler_pre_ue_select_fairRR_radiosaber(Mod_id, frameP, subframeP, mbsfn_flag, nb_rbs_required, dlsch_ue_select, rballoc_sub);
+  //  dlsch_scheduler_pre_ue_select_fairRR_sbcqi(Mod_id,frameP,subframeP, mbsfn_flag,nb_rbs_required,dlsch_ue_select, rballoc_sub);
+   dlsch_scheduler_pre_ue_select_fairRR_radiosaber(Mod_id, frameP, subframeP, mbsfn_flag, nb_rbs_required, dlsch_ue_select, rballoc_sub);
    // stop_meas_overhead();
 
    for (CC_id = 0; CC_id < MAX_NUM_CCs; CC_id++) {
