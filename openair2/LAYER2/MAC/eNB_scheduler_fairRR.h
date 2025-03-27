@@ -91,7 +91,8 @@ void dlsch_scheduler_pre_ue_select_fairRR_sbcqi(
     sub_frame_t     subframeP,
     int*            mbsfn_flag,
     uint16_t        nb_rbs_required[MAX_NUM_CCs][MAX_MOBILES_PER_ENB],
-    DLSCH_UE_SELECT dlsch_ue_select[MAX_NUM_CCs]);
+    DLSCH_UE_SELECT dlsch_ue_select[MAX_NUM_CCs],
+    uint8_t rballoc_sub[NFAPI_CC_MAX][N_RBG_MAX]);
 
 void dlsch_scheduler_pre_processor_reset_fairRR(
     module_id_t module_idP,
