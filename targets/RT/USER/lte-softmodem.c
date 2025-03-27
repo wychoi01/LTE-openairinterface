@@ -180,6 +180,43 @@ double cpuf;
 int oaisim_flag=0;
 uint8_t proto_agent_flag = 0;
 
+void init_cqi_log(void) {
+  // CQI type => static
+  for (int UE_id = 0; UE_id < NUMBER_OF_UE_MAX; UE_id++) {
+    for (int rbg_id = 0; rbg_id < N_RBG_MAX; rbg_id++) {
+      cqi_static_log[UE_id][rbg_id] = 7;
+    }
+  }
+
+  // CQI type => dynamic
+  char filename[256];
+  FILE *fp;
+
+  for (int ue = 0; ue < NUMBER_OF_UE_MAX; ue++) {
+    // HARD CODING; need to fix
+    sprintf(filename, "/home/wooyoung/LTE-openairinterface/cqi-traces-noise0/ue%d.log", ue);
+
+    fp = fopen(filename, "r");
+    if (fp == NULL) {
+      fprintf(stderr, "fail open file: %s\n", filename);
+      continue;
+    }
+
+    for (int t = 0; t < CQI_TIME_FRAMES; t++) {
+      for (int rbg = 0; rbg < N_RBG_MAX; rbg++) {
+        if (fscanf(fp, "%d", &cqi_dynamic_log[t][ue][rbg]) != 1) {
+          fprintf(stderr, "file %s read error (time %d, RBG %d)\n", filename, t, rbg);
+          fclose(fp);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+
+    fclose(fp);
+  }
+}
+
+
 
 /* forward declarations */
 void set_default_frame_parms(LTE_DL_FRAME_PARMS *frame_parms[MAX_NUM_CCs]);
@@ -551,6 +588,8 @@ int main ( int argc, char **argv )
     reset_opp_meas();
   }
 
+  init_cqi_log();
+
   cpuf=get_cpu_freq_GHz();
   printf("ITTI init, useMME: %i\n",EPC_MODE_ENABLED);
   itti_init(TASK_MAX, tasks_info);
@@ -595,11 +634,11 @@ int main ( int argc, char **argv )
       if(NFAPI_MODE != NFAPI_MODE_PNF)
       flexran_agent_start(i);
     }
-    
+
     /* initializes PDCP and sets correct RLC Request/PDCP Indication callbacks
      * for monolithic/F1 modes */
    init_pdcp();
-    
+
     if (create_tasks(1) < 0) {
       printf("cannot create ITTI tasks\n");
       exit(-1);
@@ -657,7 +696,7 @@ int main ( int argc, char **argv )
       printf("Initializing eNB threads single_thread_flag:%d wait_for_sync:%d\n", get_softmodem_params()->single_thread_flag,get_softmodem_params()->wait_for_sync);
       init_eNB(get_softmodem_params()->single_thread_flag,get_softmodem_params()->wait_for_sync);
     }
-    for (int x=0; x < RC.nb_L1_inst; x++) 
+    for (int x=0; x < RC.nb_L1_inst; x++)
       for (int CC_id=0; CC_id<RC.nb_L1_CC[x]; CC_id++) {
         L1_rxtx_proc_t *L1proc= &RC.eNB[x][CC_id]->proc.L1_proc;
         L1_rxtx_proc_t *L1proctx= &RC.eNB[x][CC_id]->proc.L1_proc_tx;
@@ -681,14 +720,14 @@ int main ( int argc, char **argv )
   printf("wait_eNBs()\n");
   wait_eNBs();
   printf("About to Init RU threads RC.nb_RU:%d\n", RC.nb_RU);
-  
+
   // RU thread and some L1 procedure aren't necessary in VNF or L2 FAPI simulator.
   // but RU thread deals with pre_scd and this is necessary in VNF and simulator.
   // some initialization is necessary and init_ru_vnf do this.
   if (RC.nb_RU >0 && NFAPI_MODE!=NFAPI_MODE_VNF) {
     printf("Initializing RU threads\n");
     init_RU(RC.ru,RC.nb_RU,RC.eNB,RC.nb_L1_inst,RC.nb_L1_CC,get_softmodem_params()->rf_config_file,get_softmodem_params()->send_dmrs_sync);
-    
+
     for (ru_id=0; ru_id<RC.nb_RU; ru_id++) {
       RC.ru[ru_id]->rf_map.card=0;
       RC.ru[ru_id]->rf_map.chain=CC_id+(get_softmodem_params()->chain_offset);
@@ -709,7 +748,7 @@ int main ( int argc, char **argv )
     LOG_I(ENB_APP,"RC.nb_RU:%d\n", RC.nb_RU);
     // once all RUs are ready intiailize the rest of the eNBs ((dependence on final RU parameters after configuration)
     printf("ALL RUs ready - init eNBs\n");
-    
+
     if (NFAPI_MODE!=NFAPI_MODE_PNF && NFAPI_MODE!=NFAPI_MODE_VNF) {
       LOG_I(ENB_APP,"Not NFAPI mode - call init_eNB_afterRU()\n");
       init_eNB_afterRU();
